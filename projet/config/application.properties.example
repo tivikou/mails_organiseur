@@ -1,0 +1,18 @@
+# Copier ce fichier en config/application.properties pour l'activer.
+
+# Fournisseur de LLM : demo (hors-ligne, factice) ou ollama
+llm.provider=demo
+llm.ollama.url=http://localhost:11434
+llm.ollama.model=llama3.2
+llm.timeoutSeconds=120
+
+# Fichier de persistance des agents
+agents.file=data/agents.json
+
+# Routage : sous ce seuil de confiance, on bascule sur l'agent de repli
+routing.minConfidence=0.5
+routing.fallbackAgentId=generic
+
+# Réduction du contexte envoyé au LLM
+memory.maxHistoryMessages=6
+memory.maxDocumentChars=4000

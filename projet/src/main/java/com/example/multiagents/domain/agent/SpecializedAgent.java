@@ -4,44 +4,48 @@ import com.example.multiagents.domain.context.AgentContext;
 import com.example.multiagents.domain.email.Conversation;
 import com.example.multiagents.domain.email.Email;
 import com.example.multiagents.infrastructure.llm.LocalLanguageModel;
-import java.util.stream.Collectors;
+import java.util.List;
 
-/** Reusable agent implementation configured by prompt and context. */
+/**
+ * Agent générique : un seul comportement, configuré par son {@link AgentDefinition}.
+ * Aucune sous-classe n'est nécessaire pour ajouter un nouvel agent.
+ */
 public class SpecializedAgent implements Agent {
-    private final String id;
-    private final String name;
-    private final String systemPrompt;
-    private final AgentContext context;
+    private final AgentDefinition definition;
     private final LocalLanguageModel languageModel;
+    private final PromptBuilder promptBuilder;
 
-    public SpecializedAgent(String id, String name, String systemPrompt,
-                            AgentContext context, LocalLanguageModel languageModel) {
-        this.id = id;
-        this.name = name;
-        this.systemPrompt = systemPrompt;
-        this.context = context;
+    public SpecializedAgent(AgentDefinition definition, LocalLanguageModel languageModel,
+                            PromptBuilder promptBuilder) {
+        this.definition = definition;
         this.languageModel = languageModel;
+        this.promptBuilder = promptBuilder;
     }
 
     @Override
-    public String id() { return id; }
+    public String id() { return definition.id(); }
 
     @Override
-    public String name() { return name; }
+    public String name() { return definition.name(); }
 
     @Override
-    public String systemPrompt() { return systemPrompt; }
+    public String description() { return definition.description(); }
 
     @Override
-    public AgentContext context() { return context; }
+    public List<String> keywords() { return definition.keywords(); }
+
+    @Override
+    public String systemPrompt() { return definition.systemPrompt(); }
+
+    @Override
+    public AgentContext context() { return definition.context(); }
 
     @Override
     public DraftReply draftReply(Email email, Conversation conversation) {
-        String history = conversation.messages().stream()
-                .map(message -> message.role() + ": " + message.content())
-                .collect(Collectors.joining("\n"));
-        String contextText = context.instructions() + "\nHistorique:\n" + history;
-        String response = languageModel.generate(systemPrompt, contextText, email.body());
-        return new DraftReply(response, id, 0.80);
+        // 1. contexte propre à l'agent + historique réduit ; 2. appel au LLM local
+        String contextText = promptBuilder.build(definition.context(), conversation);
+        String userMessage = "De : " + email.sender() + "\nSujet : " + email.subject() + "\n\n" + email.body();
+        String response = languageModel.generate(definition.systemPrompt(), contextText, userMessage);
+        return new DraftReply(response, definition.id(), 0.80);
     }
 }
