@@ -77,6 +77,18 @@ class MailPanel extends JPanel {
         reject.addActionListener(event -> rejectDraft());
     }
 
+    /** Charge un e-mail (ex. reçu via la synchronisation) dans le formulaire et lance l'analyse. */
+    void loadEmail(Email email) {
+        sender.setText(email.sender());
+        subject.setText(email.subject());
+        body.setText(email.body());
+        body.setCaretPosition(0);
+        draft.setText("");
+        accept.setEnabled(false);
+        reject.setEnabled(false);
+        analyzeEmail();
+    }
+
     /** Lance le routage + la génération hors du thread graphique (le LLM peut être lent). */
     private void analyzeEmail() {
         final Email email;
@@ -117,7 +129,8 @@ class MailPanel extends JPanel {
                     Thread.currentThread().interrupt();
                 } catch (ExecutionException e) {
                     routingInfo.setText("Échec de la génération.");
-                    JOptionPane.showMessageDialog(MailPanel.this, e.getCause().getMessage(),
+                    JOptionPane.showMessageDialog(MailPanel.this, e.getCause().getMessage()
+                            + "\n\nVérifiez l'onglet « Modèle LLM » (serveur Ollama lancé, modèle installé).",
                             "Erreur", JOptionPane.ERROR_MESSAGE);
                 }
             }

@@ -21,6 +21,12 @@
             <artifactId>jackson-databind</artifactId>
             <version>2.18.2</version>
         </dependency>
+        <!-- Lecture de la boîte mail (IMAP) : implémentation Jakarta Mail -->
+        <dependency>
+            <groupId>org.eclipse.angus</groupId>
+            <artifactId>angus-mail</artifactId>
+            <version>2.0.3</version>
+        </dependency>
         <!-- Tests unitaires -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -56,6 +62,8 @@
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <transformers>
+                                <!-- fusionne META-INF/services (nécessaire à Jakarta Mail / Activation) -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>com.example.multiagents.application.Application</mainClass>
                                 </transformer>

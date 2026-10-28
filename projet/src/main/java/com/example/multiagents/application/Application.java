@@ -7,8 +7,10 @@ import com.example.multiagents.domain.agent.AgentRepository;
 import com.example.multiagents.domain.agent.PromptBuilder;
 import com.example.multiagents.domain.context.AgentContext;
 import com.example.multiagents.domain.email.ConversationStore;
+import com.example.multiagents.domain.email.MailboxClientFactory;
+import com.example.multiagents.infrastructure.llm.ConfigurableLanguageModel;
 import com.example.multiagents.infrastructure.llm.LanguageModelFactory;
-import com.example.multiagents.infrastructure.llm.LocalLanguageModel;
+import com.example.multiagents.infrastructure.mail.ImapMailboxClient;
 import com.example.multiagents.infrastructure.persistence.JsonAgentRepository;
 import com.example.multiagents.routing.FallbackRoutingStrategy;
 import com.example.multiagents.routing.KeywordRoutingStrategy;
@@ -25,10 +27,13 @@ public final class Application {
     }
 
     public static void main(String[] args) {
-        AppConfig config = AppConfig.load(Path.of("config", "application.properties"));
+        Path configFile = Path.of("config", "application.properties");
+        AppConfig config = AppConfig.load(configFile);
 
-        // Infrastructure : LLM local (interchangeable) et persistance JSON
-        LocalLanguageModel languageModel = LanguageModelFactory.create(config);
+        // Infrastructure : LLM local (commutable à chaud depuis l'interface) et persistance JSON
+        ConfigurableLanguageModel languageModel = new ConfigurableLanguageModel(LanguageModelFactory.create(config));
+        SettingsService settings = new SettingsService(configFile, config, languageModel);
+        MailboxClientFactory mailboxClientFactory = ImapMailboxClient::new;
         AgentRepository repository = new JsonAgentRepository(config.agentsFile());
 
         // Domaine : fabrique d'agents, registre, mémoire des conversations
@@ -44,7 +49,7 @@ public final class Application {
                 new KeywordRoutingStrategy(), config.fallbackAgentId(), config.routingMinConfidence());
         Router router = new Router(registry, strategy);
 
-        SwingUtilities.invokeLater(() -> new MainWindow(registry, router, conversations).setVisible(true));
+        SwingUtilities.invokeLater(() -> new MainWindow(registry, router, conversations, settings, mailboxClientFactory).setVisible(true));
     }
 
     /** Agents proposés au premier lancement ; l'utilisateur peut les modifier ou les supprimer. */

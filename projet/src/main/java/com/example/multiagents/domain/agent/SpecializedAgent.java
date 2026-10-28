@@ -11,6 +11,19 @@ import java.util.List;
  * Aucune sous-classe n'est nécessaire pour ajouter un nouvel agent.
  */
 public class SpecializedAgent implements Agent {
+    /**
+     * Règles communes à tous les agents, placées avant le system prompt de l'utilisateur :
+     * elles imposent une vraie réponse rédigée (et non un commentaire sur l'e-mail).
+     */
+    static final String WRITING_RULES = """
+            Tu rédiges la réponse à l'e-mail reçu, au nom de l'utilisateur.
+            - Écris uniquement le texte de l'e-mail à envoyer : formule d'appel, corps, formule de politesse. \
+            Aucun commentaire, aucune explication, aucun titre.
+            - Réponds dans la langue de l'expéditeur.
+            - Reprends le ton et la structure des exemples fournis, quand il y en a.
+            - N'invente aucun fait (date, note, décision, chiffre) absent du contexte ; si une information \
+            manque, dis-le poliment ou demande une précision.""";
+
     private final AgentDefinition definition;
     private final LocalLanguageModel languageModel;
     private final PromptBuilder promptBuilder;
@@ -45,7 +58,8 @@ public class SpecializedAgent implements Agent {
         // 1. contexte propre à l'agent + historique réduit ; 2. appel au LLM local
         String contextText = promptBuilder.build(definition.context(), conversation);
         String userMessage = "De : " + email.sender() + "\nSujet : " + email.subject() + "\n\n" + email.body();
-        String response = languageModel.generate(definition.systemPrompt(), contextText, userMessage);
+        String system = WRITING_RULES + "\n\n" + definition.systemPrompt();
+        String response = languageModel.generate(system, contextText, userMessage);
         return new DraftReply(response, definition.id(), 0.80);
     }
 }

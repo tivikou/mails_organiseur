@@ -6,6 +6,10 @@
 flowchart LR
     UI[Interface Swing] --> ROUTER[Router]
     UI --> REGISTRY[AgentRegistry]
+    UI --> SETTINGS[SettingsService]
+    UI --> MAILBOX[MailboxClient]
+    MAILBOX --> IMAP[Serveur IMAP]
+    SETTINGS --> LLM
     ROUTER --> REGISTRY
     ROUTER --> STRATEGY[RoutingStrategy]
     REGISTRY --> FACTORY[AgentFactory]
@@ -89,7 +93,8 @@ sequenceDiagram
 | Decorator | `FallbackRoutingStrategy` | Ajouter le seuil de confiance et le repli autour de n'importe quelle stratégie |
 | Factory | `AgentFactory`, `LanguageModelFactory` | Créer les agents depuis leur définition et le LLM depuis la configuration |
 | Repository | `AgentRepository` / `JsonAgentRepository` | Isoler la persistance (JSON aujourd'hui, base de données demain) |
-| Adapter | `OllamaLanguageModel` | Faire entrer l'API HTTP d'Ollama derrière `LocalLanguageModel` |
+| Adapter | `OllamaLanguageModel`, `ImapMailboxClient` | Faire entrer l'API HTTP d'Ollama et le protocole IMAP derrière `LocalLanguageModel` et `MailboxClient` |
+| Proxy | `ConfigurableLanguageModel` | Changer de moteur ou de modèle à chaud sans recréer les agents |
 | Observer | `AgentRegistry.addListener` | Rafraîchir l'interface quand les agents changent |
 
 ## Réponses aux questions de conception
@@ -105,6 +110,6 @@ sequenceDiagram
 9. **Historique.** `Conversation` par fil (`ConversationStore`) : message reçu, brouillon généré, réponse validée.
 10. **Éviter trop de contexte.** `PromptBuilder` : fenêtre glissante de N messages et documents tronqués.
 11. **Nouvel agent.** Formulaire de l'interface ou `AgentRegistry.save(...)` ; aucun code à modifier.
-12. **Changer de LLM.** Configuration (`llm.provider`) ou nouvelle implémentation de `LocalLanguageModel`.
-13. **Données persistantes.** Définitions d'agents (JSON). À venir : historique des fils.
+12. **Changer de LLM.** Onglet « Modèle LLM » (changement à chaud via `ConfigurableLanguageModel`), configuration (`llm.provider`), ou nouvelle implémentation de `LocalLanguageModel`.
+13. **Données persistantes.** Définitions d'agents (JSON) et réglages (LLM, serveur IMAP). Jamais le mot de passe. À venir : historique des fils.
 14. **Avantages / limites.** Spécialisation et contextes courts adaptés aux petits modèles ; routage par mots-clés fragile pour les messages ambigus.

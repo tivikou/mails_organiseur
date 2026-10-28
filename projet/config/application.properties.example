@@ -1,7 +1,7 @@
 # Copier ce fichier en config/application.properties pour l'activer.
 
-# Fournisseur de LLM : demo (hors-ligne, factice) ou ollama
-llm.provider=demo
+# Fournisseur de LLM : ollama (vraies réponses, local) ou demo (hors-ligne, factice)
+llm.provider=ollama
 llm.ollama.url=http://localhost:11434
 llm.ollama.model=llama3.2
 llm.timeoutSeconds=120
@@ -16,3 +16,10 @@ routing.fallbackAgentId=generic
 # Réduction du contexte envoyé au LLM
 memory.maxHistoryMessages=6
 memory.maxDocumentChars=4000
+
+# Boîte mail (IMAP, lecture seule). Le mot de passe n'est JAMAIS stocké : il se saisit dans l'onglet Synchronisation.
+mail.imap.host=
+mail.imap.port=993
+mail.imap.username=
+mail.imap.ssl=true
+mail.imap.folder=INBOX
