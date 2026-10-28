@@ -14,4 +14,11 @@ public interface MailboxClient {
      * @throws MailboxException si la connexion ou l'authentification échoue
      */
     List<Email> fetchRecent(int max);
+
+    /**
+     * Envoie une réponse à l'expéditeur de l'email reçu en utilisant la même boîte connectée.
+     *
+     * @throws MailboxException si l'envoi SMTP échoue
+     */
+    void sendReply(Email email, String subject, String body);
 }

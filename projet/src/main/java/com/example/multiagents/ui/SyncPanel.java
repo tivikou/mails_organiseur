@@ -18,6 +18,7 @@ import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JComboBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
@@ -41,9 +42,9 @@ class SyncPanel extends JPanel {
 
     private final SettingsService settings;
     private final MailboxClientFactory clientFactory;
-    private final Consumer<Email> onProcess;
+    private final Consumer<MailSelection> onProcess;
 
-    private final JTextField host = new JTextField(22);
+    private final JComboBox<String> provider = new JComboBox<>(new String[] {"Gmail", "Outlook", "Yahoo"});
     private final JSpinner port = new JSpinner(new SpinnerNumberModel(993, 1, 65535, 1));
     private final JTextField username = new JTextField(22);
     private final JPasswordField password = new JPasswordField(22);
@@ -51,6 +52,7 @@ class SyncPanel extends JPanel {
     private final JCheckBox ssl = new JCheckBox("SSL/TLS", true);
     private final JSpinner count = new JSpinner(new SpinnerNumberModel(20, 1, 200, 5));
     private final JButton fetch = new JButton("Se connecter et récupérer");
+    private final JButton next = new JButton("Mail suivant");
     private final JButton process = new JButton("Traiter l'e-mail sélectionné");
     private final JLabel status = new JLabel("Non connecté.");
 
@@ -63,7 +65,9 @@ class SyncPanel extends JPanel {
     private final JTable table = new JTable(tableModel);
     private final List<Email> emails = new ArrayList<>();
 
-    SyncPanel(SettingsService settings, MailboxClientFactory clientFactory, Consumer<Email> onProcess) {
+    record MailSelection(List<Email> emails, int index, Email email, MailboxSettings mailbox, char[] password) {}
+
+    SyncPanel(SettingsService settings, MailboxClientFactory clientFactory, Consumer<MailSelection> onProcess) {
         super(new BorderLayout(10, 10));
         this.settings = settings;
         this.clientFactory = clientFactory;
@@ -71,15 +75,16 @@ class SyncPanel extends JPanel {
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
         MailboxSettings saved = settings.current().mailbox();
-        host.setText(saved.host());
+        provider.setSelectedItem(resolveProvider(saved.host()));
         port.setValue(saved.port());
         username.setText(saved.username());
         folder.setText(saved.folder());
         ssl.setSelected(saved.ssl());
+        provider.addActionListener(event -> applyProviderDefaults());
 
         JPanel form = new JPanel(new GridBagLayout());
         form.setBorder(BorderFactory.createTitledBorder("Boîte mail (IMAP, lecture seule)"));
-        addRow(form, 0, "Serveur IMAP", host, "Port", port);
+        addRow(form, 0, "Serveur IMAP", provider, "Port", port);
         addRow(form, 1, "Identifiant", username, "Mot de passe", password);
         addRow(form, 2, "Dossier", folder, "Nombre de mails", count);
         GridBagConstraints c = new GridBagConstraints();
@@ -100,8 +105,10 @@ class SyncPanel extends JPanel {
 
         JPanel buttons = new JPanel();
         buttons.add(fetch);
+        buttons.add(next);
         buttons.add(process);
         process.setEnabled(false);
+        next.setEnabled(false);
         JPanel south = new JPanel(new BorderLayout());
         south.add(status, BorderLayout.NORTH);
         south.add(buttons, BorderLayout.SOUTH);
@@ -111,15 +118,70 @@ class SyncPanel extends JPanel {
         add(south, BorderLayout.SOUTH);
 
         fetch.addActionListener(event -> fetchEmails());
+        next.addActionListener(event -> nextEmail());
         process.addActionListener(event -> processSelected());
         table.getSelectionModel().addListSelectionListener(
-                event -> process.setEnabled(table.getSelectedRow() >= 0));
+                event -> {
+                    boolean hasSelection = table.getSelectedRow() >= 0;
+                    process.setEnabled(hasSelection);
+                    next.setEnabled(emails.size() > 1);
+                });
+    }
+
+    private void applyProviderDefaults() {
+        String selected = (String) provider.getSelectedItem();
+        if (selected == null) {
+            return;
+        }
+        switch (selected) {
+            case "Gmail" -> {
+                port.setValue(993);
+                ssl.setSelected(true);
+            }
+            case "Outlook" -> {
+                port.setValue(993);
+                ssl.setSelected(true);
+            }
+            case "Yahoo" -> {
+                port.setValue(993);
+                ssl.setSelected(true);
+            }
+            default -> {
+                port.setValue(993);
+                ssl.setSelected(true);
+            }
+        }
+    }
+
+    private String resolveProvider(String host) {
+        if (host == null || host.isBlank()) {
+            return "Gmail";
+        }
+        if (host.equals("imap.gmail.com") || host.equals("imap.googlemail.com")) {
+            return "Gmail";
+        }
+        if (host.equals("imap-mail.outlook.com") || host.equals("outlook.office365.com")) {
+            return "Outlook";
+        }
+        if (host.equals("imap.mail.yahoo.com")) {
+            return "Yahoo";
+        }
+        return "Gmail";
+    }
+
+    private MailboxSettings buildMailboxSettings() {
+        String selected = (String) provider.getSelectedItem();
+        String hostValue = switch (selected) {
+            case "Outlook" -> "imap-mail.outlook.com";
+            case "Yahoo" -> "imap.mail.yahoo.com";
+            default -> "imap.gmail.com";
+        };
+        return new MailboxSettings(hostValue, (Integer) port.getValue(), username.getText(), ssl.isSelected(), folder.getText());
     }
 
     /** Sauvegarde les paramètres (sans mot de passe) puis lit la boîte hors du thread graphique. */
     private void fetchEmails() {
-        MailboxSettings mailbox = new MailboxSettings(host.getText(), (Integer) port.getValue(),
-                username.getText(), ssl.isSelected(), folder.getText());
+        MailboxSettings mailbox = buildMailboxSettings();
         char[] pwd = password.getPassword();
         if (!mailbox.isConfigured() || pwd.length == 0) {
             status.setText("Renseignez le serveur, l'identifiant et le mot de passe.");
@@ -164,10 +226,26 @@ class SyncPanel extends JPanel {
         status.setText(fetched.size() + " e-mail(s) récupéré(s). Sélectionnez-en un puis « Traiter ».");
     }
 
+    private void nextEmail() {
+        if (emails.isEmpty()) {
+            return;
+        }
+        int current = table.getSelectedRow();
+        int nextIndex = current >= 0 ? current + 1 : 0;
+        if (nextIndex >= emails.size()) {
+            nextIndex = 0;
+        }
+        table.setRowSelectionInterval(nextIndex, nextIndex);
+        processSelected();
+    }
+
     private void processSelected() {
         int row = table.getSelectedRow();
         if (row >= 0) {
-            onProcess.accept(emails.get(row));
+            MailboxSettings mailbox = buildMailboxSettings();
+            char[] pwd = password.getPassword();
+            onProcess.accept(new MailSelection(List.copyOf(emails), row, emails.get(row), mailbox, Arrays.copyOf(pwd, pwd.length)));
+            Arrays.fill(pwd, '\0');
         }
     }
 

@@ -4,10 +4,16 @@ import com.example.multiagents.domain.email.Conversation;
 import com.example.multiagents.domain.email.ConversationMessage;
 import com.example.multiagents.domain.email.ConversationStore;
 import com.example.multiagents.domain.email.Email;
+import com.example.multiagents.domain.email.MailboxClient;
+import com.example.multiagents.domain.email.MailboxException;
+import com.example.multiagents.domain.email.MailboxSettings;
+import com.example.multiagents.infrastructure.mail.ImapMailboxClient;
 import com.example.multiagents.routing.Router;
 import java.awt.BorderLayout;
 import java.awt.GridLayout;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -35,9 +41,15 @@ class MailPanel extends JPanel {
     private final JButton analyze = new JButton("Analyser et proposer une réponse");
     private final JButton accept = new JButton("Valider la réponse");
     private final JButton reject = new JButton("Rejeter");
+    private final JButton nextMail = new JButton("Mail suivant");
 
     /** Fil et e-mail en cours de traitement (pour enregistrer la réponse validée). */
     private Conversation currentConversation;
+    private Email currentEmail;
+    private MailboxSettings currentMailbox;
+    private char[] currentMailboxPassword;
+    private final List<Email> currentMailQueue = new ArrayList<>();
+    private int currentMailIndex = -1;
 
     MailPanel(Router router, ConversationStore conversations) {
         super(new BorderLayout(10, 10));
@@ -62,6 +74,7 @@ class MailPanel extends JPanel {
         actions.add(analyze);
         actions.add(accept);
         actions.add(reject);
+        actions.add(nextMail);
         JPanel south = new JPanel(new BorderLayout());
         south.add(routingInfo, BorderLayout.NORTH);
         south.add(actions, BorderLayout.SOUTH);
@@ -72,18 +85,36 @@ class MailPanel extends JPanel {
 
         accept.setEnabled(false);
         reject.setEnabled(false);
+        nextMail.setEnabled(false);
         analyze.addActionListener(event -> analyzeEmail());
         accept.addActionListener(event -> acceptDraft());
         reject.addActionListener(event -> rejectDraft());
+        nextMail.addActionListener(event -> nextMail());
     }
 
     /** Charge un e-mail (ex. reçu via la synchronisation) dans le formulaire et lance l'analyse. */
     void loadEmail(Email email) {
+        loadEmail(email, null, null, List.of(), -1);
+    }
+
+    void loadEmail(Email email, MailboxSettings mailbox, char[] password, List<Email> queue, int index) {
         sender.setText(email.sender());
         subject.setText(email.subject());
         body.setText(email.body());
         body.setCaretPosition(0);
         draft.setText("");
+        currentEmail = email;
+        currentMailbox = mailbox;
+        currentMailboxPassword = password == null ? null : java.util.Arrays.copyOf(password, password.length);
+
+        if (queue == null) {
+            currentMailQueue.clear();
+        } else if (queue != currentMailQueue) {
+            currentMailQueue.clear();
+            currentMailQueue.addAll(queue);
+        }
+
+        currentMailIndex = index;
         accept.setEnabled(false);
         reject.setEnabled(false);
         analyzeEmail();
@@ -125,6 +156,7 @@ class MailPanel extends JPanel {
                     draft.setText(result.reply().content());
                     accept.setEnabled(true);
                     reject.setEnabled(true);
+                    nextMail.setEnabled(true);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 } catch (ExecutionException e) {
@@ -143,11 +175,31 @@ class MailPanel extends JPanel {
         if (finalText.isEmpty() || currentConversation == null) {
             return;
         }
+
+        if (currentEmail != null && currentMailbox != null && currentMailbox.isConfigured()
+                && currentMailboxPassword != null && currentMailboxPassword.length > 0) {
+            try {
+                MailboxClient client = new ImapMailboxClient(currentMailbox, currentMailboxPassword);
+                client.sendReply(currentEmail, "Re: " + currentEmail.subject(), finalText);
+                routingInfo.setText("Réponse envoyée via " + currentMailbox.username() + " pour " + currentEmail.sender() + ".");
+                JOptionPane.showMessageDialog(this, "Réponse envoyée avec succès.", "E-mail envoyé", JOptionPane.INFORMATION_MESSAGE);
+            } catch (MailboxException e) {
+                routingInfo.setText("Réponse validée localement, mais l'envoi SMTP a échoué : " + e.getMessage());
+                JOptionPane.showMessageDialog(this, e.getMessage(), "Échec de l'envoi", JOptionPane.ERROR_MESSAGE);
+            } finally {
+                java.util.Arrays.fill(currentMailboxPassword, '\0');
+                currentMailboxPassword = null;
+                currentMailbox = null;
+            }
+        } else {
+            routingInfo.setText("Réponse validée et mémorisée dans le fil (à copier dans votre messagerie).");
+        }
+
         currentConversation.addMessage(new ConversationMessage(
                 ConversationMessage.Role.USER, finalText, Instant.now()));
-        routingInfo.setText("Réponse validée et mémorisée dans le fil (à copier dans votre messagerie).");
         accept.setEnabled(false);
         reject.setEnabled(false);
+        nextMail.setEnabled(true);
     }
 
     private void rejectDraft() {
@@ -155,6 +207,20 @@ class MailPanel extends JPanel {
         routingInfo.setText("Proposition rejetée.");
         accept.setEnabled(false);
         reject.setEnabled(false);
+        nextMail.setEnabled(true);
+    }
+
+    private void nextMail() {
+        if (currentMailQueue.isEmpty()) {
+            routingInfo.setText("Aucun autre e-mail disponible dans cette boîte.");
+            return;
+        }
+        int nextIndex = currentMailIndex + 1;
+        if (nextIndex >= currentMailQueue.size()) {
+            nextIndex = 0;
+        }
+        Email next = currentMailQueue.get(nextIndex);
+        loadEmail(next, currentMailbox, currentMailboxPassword, currentMailQueue, nextIndex);
     }
 
     private static JTextArea textArea(String text) {

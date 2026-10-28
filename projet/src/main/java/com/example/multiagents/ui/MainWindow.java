@@ -4,6 +4,7 @@ import com.example.multiagents.application.SettingsService;
 import com.example.multiagents.domain.agent.AgentRegistry;
 import com.example.multiagents.domain.email.ConversationStore;
 import com.example.multiagents.domain.email.MailboxClientFactory;
+import com.example.multiagents.domain.email.MailboxSettings;
 import com.example.multiagents.routing.Router;
 import javax.swing.JFrame;
 import javax.swing.JTabbedPane;
@@ -23,9 +24,9 @@ public class MainWindow extends JFrame {
         MailPanel mailPanel = new MailPanel(router, conversations);
         tabs.addTab("Courrier", mailPanel);
         // Un e-mail synchronisé est envoyé à l'onglet Courrier, qui lance aussitôt l'analyse
-        tabs.addTab("Synchronisation", new SyncPanel(settings, mailboxClientFactory, email -> {
+        tabs.addTab("Synchronisation", new SyncPanel(settings, mailboxClientFactory, selection -> {
             tabs.setSelectedIndex(MAIL_TAB);
-            mailPanel.loadEmail(email);
+            mailPanel.loadEmail(selection.email(), selection.mailbox(), selection.password(), selection.emails(), selection.index());
         }));
         tabs.addTab("Agents", new AgentsPanel(this, registry));
         tabs.addTab("Modèle LLM", new SettingsPanel(settings));

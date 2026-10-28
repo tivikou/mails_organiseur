@@ -11,7 +11,9 @@ import jakarta.mail.MessagingException;
 import jakarta.mail.Part;
 import jakarta.mail.Session;
 import jakarta.mail.Store;
+import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -54,6 +56,42 @@ public class ImapMailboxClient implements MailboxClient {
             throw new MailboxException("Connexion IMAP impossible : " + e.getMessage(), e);
         } finally {
             closeQuietly(folder, store);
+        }
+    }
+
+    @Override
+    public void sendReply(Email email, String subject, String body) {
+        String smtpHost = switch (settings.host()) {
+            case "imap.gmail.com", "imap.googlemail.com" -> "smtp.gmail.com";
+            case "imap-mail.outlook.com", "outlook.office365.com" -> "smtp.office365.com";
+            case "imap.mail.yahoo.com" -> "smtp.mail.yahoo.com";
+            default -> null;
+        };
+        if (smtpHost == null || smtpHost.isBlank()) {
+            throw new MailboxException("Serveur SMTP inconnu pour ce fournisseur IMAP : " + settings.host(), null);
+        }
+
+        Properties props = new Properties();
+        props.put("mail.smtp.host", smtpHost);
+        props.put("mail.smtp.port", "587");
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.starttls.required", "true");
+
+        try {
+            Session session = Session.getInstance(props);
+            MimeMessage message = new MimeMessage(session);
+            message.setFrom(new InternetAddress(settings.username()));
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(email.sender(), false));
+            message.setSubject(subject == null || subject.isBlank() ? "Réponse" : subject);
+            message.setText(body == null ? "" : body, "UTF-8");
+
+            try (Transport transport = session.getTransport("smtp")) {
+                transport.connect(smtpHost, settings.username(), new String(password));
+                transport.sendMessage(message, message.getAllRecipients());
+            }
+        } catch (MessagingException e) {
+            throw new MailboxException("Envoi SMTP impossible : " + e.getMessage(), e);
         }
     }
 
