@@ -57,7 +57,7 @@ public final class Application {
                         new AgentContext("Cours, évaluations et accompagnement étudiant.", List.of(),
                                 List.of(new AgentContext.ExampleExchange(
                                         "Bonjour, quand est le rendu du TP 2 ?",
-                                        "Bonjour,\nLe TP 2 est à rendre vendredi à 23h59 sur la plateforme du cours.\nCordialement"))),
+                                        "Bonjour,\nLe TP 2 est à rendre vendredi à 23h59 sur la plateforme du cours.\nCordialement")))),
                 new AgentDefinition("administration", "AdministrationAgent", "Répond aux demandes administratives",
                         List.of("administration", "secrétariat", "dossier", "inscription", "convention", "budget"),
                         "Tu réponds de manière formelle et concise aux demandes administratives.",
