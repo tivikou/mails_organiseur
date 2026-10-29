@@ -1,53 +1,52 @@
 # Local Email Agents
 
-Framework Java orienté objet qui propose des brouillons de réponse à des e-mails grâce à des **agents spécialisés** et à un **LLM exécuté localement** (aucune donnée envoyée à un service distant). L'utilisateur garde toujours la validation finale : rien n'est envoyé automatiquement.
+Application Java qui génère des brouillons de reponse a des e-mails via des agents specialises et un modele local. Rien n'est envoye automatiquement: l'utilisateur garde toujours la validation finale.
 
-## Fonctionnement
+## Prerequis
 
-1. Onglet **Synchronisation** : connexion à une boîte mail (IMAP, lecture seule) et liste des derniers e-mails ; « Traiter » envoie le mail sélectionné à l'onglet Courrier.
-2. Onglet **Modèle LLM** : choix d'Ollama, de l'URL et du modèle, test de connexion, test de rédaction, application à chaud.
-3. Onglet **Agents** : l'utilisateur crée un agent pour une tâche précise (nom, description, mots-clés, system prompt) et lui associe un **contexte** : instructions, fichiers de référence et **exemples d'e-mails avec la réponse attendue**.
-4. Onglet **Courrier** : à la saisie d'un e-mail, le routeur choisit l'agent, l'agent construit son prompt (contexte + historique réduit) et interroge le LLM local.
-5. L'utilisateur voit l'agent choisi, sa confiance, puis **valide, modifie ou rejette** le brouillon. La réponse validée est mémorisée dans le fil de discussion.
+- JDK 17+
+- Maven 3.9+
+- Ollama installe en local (recommande pour un usage reel): https://ollama.com
 
-```
-E-mail → Router → (RoutingStrategy) → SpecializedAgent → PromptBuilder → LocalLanguageModel → brouillon → utilisateur
-```
+## Dependances du projet
 
-## Organisation du code
+Dependances declarees dans [projet/pom.xml](projet/pom.xml):
 
-| Package | Rôle |
-|---|---|
-| `domain.agent` | `Agent`, `AgentDefinition` (données persistables), `SpecializedAgent`, `AgentFactory`, `AgentRegistry`, `PromptBuilder`, `AgentRepository` (port) |
-| `domain.context` | `AgentContext` : instructions, fichiers, exemples mail/réponse |
-| `domain.email` | `Email`, `Conversation`, `ConversationMessage`, `ConversationStore`, `MailboxClient` (port), `MailboxSettings` |
-| `routing` | `Router`, `RoutingStrategy`, `KeywordRoutingStrategy`, `FallbackRoutingStrategy` |
-| `infrastructure.llm` | `LocalLanguageModel` (interface), `OllamaLanguageModel`, `DemoLocalLanguageModel`, `ConfigurableLanguageModel` (commutable à chaud), `LanguageModelFactory` |
-| `infrastructure.mail` | `ImapMailboxClient` (Jakarta Mail) |
-| `infrastructure.persistence` | `JsonAgentRepository` |
-| `ui` | `MainWindow`, `MailPanel`, `SyncPanel`, `AgentsPanel`, `AgentEditorDialog`, `SettingsPanel` (Swing) |
-| `application` | `Application` (point d'entrée, assemblage des dépendances), `AppConfig`, `SettingsService` |
+- com.fasterxml.jackson.core:jackson-databind:2.18.2 (JSON)
+- org.eclipse.angus:angus-mail:2.0.3 (IMAP)
+- org.junit.jupiter:junit-jupiter:5.11.4 (tests)
 
-Voir `docs/architecture.md` pour les diagrammes et les patterns, et `docs/PROMPT.md` pour le prompt de conception.
-
-## Prérequis
-
-- JDK 17 ou supérieur, Maven 3.9 ou supérieur.
-- Dépendances (téléchargées par Maven) : Jackson 2.18 (JSON), Angus Mail 2.0 (IMAP), JUnit 5 (tests).
-- Pour un vrai modèle : [Ollama](https://ollama.com) installé en local, par exemple `ollama pull llama3.2`.
-
-## Compilation et lancement
+Commandes utiles:
 
 ```bash
+# Telecharge toutes les dependances (utile hors-ligne ensuite)
+mvn dependency:go-offline
+
+# Compile, execute les tests et construit le jar executable
 mvn clean package
+```
+
+Lancement de l'application:
+
+```bash
 java -jar target/local-email-agents-0.1.0-SNAPSHOT.jar
 ```
 
-Au premier lancement, trois agents d'exemple sont créés. Le moteur par défaut est **Ollama** : si le serveur n'est pas lancé, un message renvoie vers l'onglet « Modèle LLM ». Le moteur « demo » (réponse factice, hors-ligne) permet de tester l'interface sans modèle.
+## Fonctionnalites et utilisation
 
-## Configurer le LLM local
+### 1) Synchronisation IMAP (lecture seule)
 
-Le plus simple : onglet **Modèle LLM** (lister les modèles installés, « Tester une réponse », « Enregistrer et appliquer »). Les réglages sont écrits dans `config/application.properties`. Sinon, copier `config/application.properties.example` vers `config/application.properties` puis l'adapter :
+- Connecte une boite mail en IMAP et liste les derniers messages.
+- Bouton Traiter: envoie le mail selectionne vers l'onglet Courrier.
+- Aucune action destructive: aucun mail marque lu, deplace ou supprime.
+
+### 2) Configuration du modele local
+
+- Onglet Modele LLM: choix du provider, URL, modele, test de connexion, test de reponse.
+- Reglages enregistres dans [projet/config/application.properties](projet/config/application.properties).
+- Exemple de configuration dans [projet/config/application.properties.example](projet/config/application.properties.example).
+
+Exemple Ollama:
 
 ```properties
 llm.provider=ollama
@@ -55,22 +54,57 @@ llm.ollama.url=http://localhost:11434
 llm.ollama.model=llama3.2
 ```
 
-Tous les agents reçoivent des règles de rédaction communes (écrire uniquement le texte de l'e-mail, dans la langue de l'expéditeur, sans inventer de faits) avant leur propre system prompt.
+### 3) Gestion des agents
 
-## Synchroniser une boîte mail
+- Creation/modification d'agents depuis l'onglet Agents.
+- Chaque agent peut avoir une description, des mots-cles, un system prompt et un contexte metier.
+- Les definitions sont persistees dans [projet/data/agents.json](projet/data/agents.json).
 
-Onglet **Synchronisation** : serveur IMAP, port (993 en SSL), identifiant, mot de passe, dossier. Gmail, Outlook et iCloud exigent un **mot de passe d'application**. L'accès est en **lecture seule** (aucun mail marqué lu, déplacé ou supprimé) et le **mot de passe n'est jamais enregistré** : il se saisit à chaque session. L'envoi des réponses n'est pas implémenté : vous copiez le brouillon validé dans votre messagerie.
+### 4) Generation de brouillons
 
-## Agents et autres moteurs
+- Le routeur choisit l'agent le plus adapte.
+- L'agent construit le prompt et interroge le modele local.
+- L'utilisateur valide, corrige ou rejette le brouillon.
 
-Les agents sont enregistrés dans `data/agents.json` (modifiable à la main). Pour utiliser un autre moteur (LM Studio, llama.cpp...), implémenter `LocalLanguageModel` et l'ajouter à `LanguageModelFactory`.
+Flux simplifie:
 
-## Ajouter un agent
+```text
+E-mail -> Router -> SpecializedAgent -> PromptBuilder -> LocalLanguageModel -> Brouillon
+```
 
-Aucun code nécessaire : onglet **Agents → Nouvel agent**. Pour créer un agent par programmation, construire un `AgentDefinition` et appeler `AgentRegistry.save(...)`.
+## Connexion d'un compte e-mail
 
-## Limites actuelles et suite
+### Parametres IMAP a renseigner
 
-- Routage par mots-clés uniquement (un routeur basé sur le LLM s'ajoute via `RoutingStrategy`).
-- Historique des conversations en mémoire (non persisté) ; lecture IMAP seulement, pas d'envoi SMTP.
-- À faire : jeu de scénarios d'évaluation comparant plusieurs configurations (modèle, prompt, contexte).
+- Serveur IMAP
+- Port (generalement 993 en SSL/TLS)
+- Identifiant (adresse e-mail complete dans la plupart des cas)
+- Mot de passe (ou mot de passe d'application)
+- Dossier a lire (ex: INBOX)
+
+Important: le mot de passe n'est pas stocke durablement et doit etre saisi a chaque session.
+
+### Cas Gmail (obligatoire: 2FA + mot de passe d'application)
+
+Pour Gmail, le mot de passe principal du compte ne fonctionne generalement pas en IMAP dans ce type d'application locale.
+
+Procedure:
+
+1. Activer la validation en 2 etapes sur le compte Google.
+2. Aller dans Securite -> Mots de passe des applications.
+3. Generer un mot de passe d'application (16 caracteres).
+4. Utiliser ce mot de passe dans l'onglet Synchronisation a la place du mot de passe habituel.
+
+Parametres Gmail habituels:
+
+- IMAP: imap.gmail.com
+- Port: 993
+- Securite: SSL/TLS
+
+### Autres fournisseurs
+
+- Outlook et iCloud peuvent aussi exiger un mot de passe d'application.
+- En cas d'echec de connexion, verifier en priorite:
+	- IMAP active cote fournisseur
+	- Port et securite SSL/TLS
+	- Presence d'une double authentification et d'un mot de passe d'application
